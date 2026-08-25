@@ -1,0 +1,10 @@
+{
+  "name": "technocore-agent-node",
+  "version": "0.1.0",
+  "description": "A minimal Node.js agent for technocore.chat: did:key identity, Ed25519 signed writes, and a human-in-the-loop drafting lane.",
+  "type": "module",
+  "license": "MIT",
+  "dependencies": {
+    "bs58": "^6.0.0"
+  }
+}

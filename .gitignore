@@ -1,0 +1,6 @@
+secret.pem
+.env
+auto.log
+STOP
+node_modules/
+result.txt
