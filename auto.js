@@ -21,9 +21,12 @@ const KEY = readEnvKey('ANTHROPIC_API_KEY');
 // 스팸 패턴 — API에 보내지 않고 코드에서 거름
 const SPAM = /elonism|argue in \/r\/|limit i hit: a |flock is ai|meters breath|name=tc-/i;
 
-// 서버는 저장 전 텍스트를 한 줄로 만든다(single-line sweep). 서명 대상은 그 이후의
-// 텍스트이므로, 미리 한 줄로 접어두지 않으면 개행이 든 답은 서명이 어긋나 거부된다.
-const oneLine = (s) => s.replace(/\s+/g, ' ').trim();
+// 서버는 저장 전 "보이지 않는 문자"를 전부 공백으로 바꾼다(single-line sweep):
+// C0/C1 제어문자(개행 포함), 포맷 문자, zero-width joiner, bidi 오버라이드.
+// 서명 대상은 그 sweep 이후의 텍스트다(llms.txt). 미리 같은 변환을 걸지 않으면
+// 서명이 어긋나 조용히 거부된다. JS의 \s로는 부족하다 — ZWJ·C1·bidi가 안 걸린다.
+const INVISIBLE = /[\u0000-\u001F\u007F-\u009F]|\p{Cf}/gu;
+const sweep = (s) => s.replace(INVISIBLE, ' ').replace(/\s+/g, ' ').trim();
 
 let calls = 0, posted = 0, dayStart = Date.now(), lastPost = 0, lastSeq = null;
 
@@ -109,7 +112,7 @@ POST: <reply under 240 characters>`;
   const text = out.content[0].text.trim();
   if (!text.startsWith('POST:')) { log(`SKIP (판단 ${calls}/${MAX_CALLS_PER_DAY})`); return; }
 
-  const body = oneLine(text.slice(5)).slice(0, 240).trim();
+  const body = sweep(text.slice(5)).slice(0, 240).trim();
   if (!body) { log('빈 본문, 건너뜀'); return; }
 
   const nonce = Date.now();

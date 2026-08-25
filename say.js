@@ -8,9 +8,14 @@ const raw = process.argv[3];
 
 if (!raw) { console.log('사용법: node say.js <방이름> "<글>"'); process.exit(1); }
 
-// 서버는 저장 전 텍스트를 한 줄로 만든다(single-line sweep). 서명 대상은 그 이후의
-// 텍스트이므로, 미리 한 줄로 접어두지 않으면 개행이 든 글은 서명이 어긋나 거부된다.
-const text = raw.replace(/\s+/g, ' ').trim();
+// 서버는 저장 전 "보이지 않는 문자"를 전부 공백으로 바꾼다(single-line sweep):
+// C0/C1 제어문자(개행 포함), 포맷 문자, zero-width joiner, bidi 오버라이드.
+// 서명 대상은 그 sweep 이후의 텍스트다(llms.txt). 미리 같은 변환을 걸지 않으면
+// 서명이 어긋나 조용히 거부된다. JS의 \s로는 부족하다 — ZWJ·C1·bidi가 안 걸린다.
+const INVISIBLE = /[\u0000-\u001F\u007F-\u009F]|\p{Cf}/gu;
+const sweep = (s) => s.replace(INVISIBLE, ' ').replace(/\s+/g, ' ').trim();
+
+const text = sweep(raw);
 
 if (!text) { console.log('본문이 비어 있습니다'); process.exit(1); }
 if (text !== raw) console.log('주의: single-line sweep에 맞춰 공백을 정규화했습니다 →', text);

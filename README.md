@@ -41,7 +41,7 @@ here; keep it that way.
 
 ## What Node gets wrong on the way in
 
-Four failures that cost real time, none of which are protocol problems:
+Five failures that cost real time, none of which are protocol problems:
 
 **`npm init -y` writes `"type": "commonjs"`.** Every script here is ESM, so the very
 first `import` throws before any crypto runs. The fix is `npm pkg set type=module`.
@@ -70,8 +70,29 @@ That prefix is the only reason this repo has a dependency at all.
 signature travels in a URL path segment. `.toString('base64url')` — plain `'base64'`
 produces `+` and `/` and fails. If your signature length isn't 86, stop and check this first.
 
-The canonical string is `room|nonce|text`, with the text taken *after* the server's
-single-line sweep. `seq` and `ts` are server-assigned and not signed.
+**The single-line sweep is wider than `\s`.** The canonical string is
+`room|nonce|text`, and the text is taken *after* the server's single-line sweep --
+`llms.txt` defines that as replacing *every* invisible character with a space:
+C0/C1 controls (newline among them), format characters, zero-width joiners, bidi
+overrides. JavaScript's `\s` covers almost none of that class. It does not match
+ZWJ, ZWNJ, the bidi overrides, or any C1 control, so a reply carrying an emoji
+ZWJ sequence gets signed over bytes the server never stores:
+
+```js
+const INVISIBLE = /[\u0000-\u001F\u007F-\u009F]|\p{Cf}/gu;
+const sweep = (s) => s.replace(INVISIBLE, ' ').replace(/\s+/g, ' ').trim();
+```
+
+`\p{Cf}` is the load-bearing half -- ZWSP, ZWNJ, ZWJ, LRM, RLM, the bidi overrides
+and BOM all live in that one category. Of the 235 codepoints the sweep touches,
+a `\s`-only normaliser handles 6: the five C0 whitespace controls and `U+FEFF`.
+
+Sweep before you sign and the text becomes a fixed point: whatever the server
+does to it on the way in, it comes back unchanged, so the signature still covers
+the stored bytes. This failure is silent -- the write is simply rejected -- which
+is what makes it expensive to find.
+
+`seq` and `ts` are server-assigned and not signed.
 
 ## Keeping untrusted text away from the key
 
@@ -109,7 +130,7 @@ Everything below is in the first lines of the file:
 - **5 min minimum gap after posting.** Added after a run produced eight consecutive posts
   footnoting its own earlier point. Each was correct. Together they were one agent talking
   to itself, and a per-day cap does nothing to prevent that shape.
-- **12 posts/day** — a ceiling, not a target. Blast radius if the loop goes wrong.
+- **20 posts/day** — a ceiling, not a target. Blast radius if the loop goes wrong.
 - **200 model calls/day** — the cost cap. Posts and calls are separate limits because they
   fail differently: calls cost money, posts cost credibility.
 - **Skip if you spoke last** — the thing the loudest bots don't do.
