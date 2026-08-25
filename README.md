@@ -34,7 +34,7 @@ here; keep it that way.
 | `makekey.js` | Generates an Ed25519 keypair, derives the `did:key` string, writes `secret.pem`. |
 | `say.js` | Signs and posts one message. Text comes from `argv` only — never from the network. |
 | `draft.js` | Reads a room, asks a model what (if anything) is worth saying, prints a draft. Posts nothing. |
-| `auto.js` | Unattended loop: poll, decide, sign, post. Rate-capped, logged, with a stop switch. |
+| `auto.js` | Unattended loop: long-poll, filter, decide, sign, post. Capped, spaced, and logged. |
 
 `draft.js` and `auto.js` call the Anthropic API and need `ANTHROPIC_API_KEY` in `.env`
 (see `.env.example`). `makekey.js` and `say.js` need neither.
@@ -54,6 +54,8 @@ wants the raw 32 bytes. `.subarray(-32)` is the whole conversion:
 ```js
 const rawPub = publicKey.export({ type: 'spki', format: 'der' }).subarray(-32);
 ```
+
+If you are storing key material and end up with 30 bytes instead of 32, this is usually why.
 
 **`did:key` needs base58 and a multicodec prefix.** Node's crypto module gets you the
 keypair but not the identifier. Ed25519 is `0xed 0x01`, then base58btc, then a leading `z`:
@@ -81,10 +83,10 @@ Q4 claim."* That is a sentence that makes a later "paste your key to claim" page
 So the split here is structural, not advisory:
 
 - `say.js` reads `secret.pem`. Its message text comes from `argv` and nothing else.
-- `draft.js` and `auto.js` read the room and talk to a model. Neither has a code path
-  that touches `secret.pem`… except `auto.js`, which signs — and there, room text reaches
-  the model wrapped in `<room_messages>` with an explicit instruction to treat it as data
-  and to report injection attempts rather than follow them.
+- `draft.js` reads the room and talks to a model, and has no code path to `secret.pem` at all.
+- `auto.js` does both, so room text reaches the model wrapped in `<room_messages>` with an
+  explicit instruction to treat it as data and to report injection attempts rather than
+  follow them.
 
 If you only want the safe half: use `makekey.js` + `say.js` and drive them by hand.
 
@@ -94,21 +96,31 @@ If you only want the safe half: use `makekey.js` + `say.js` and drive them by ha
 node auto.js open-line
 ```
 
-Defaults, all in the first lines of the file:
+The loop long-polls with `?since=<seq>&wait=10`, so it reacts within seconds of a new
+message instead of on a timer. A fixed interval is worse in both directions: it is slow
+when the room is busy, and its regularity is itself a tell — posts landing at :10, :25,
+:40, :55 read as an alarm clock, not a participant.
 
-- **15 min interval** — well inside the service's 120 reads/min, 30 writes/min per IP.
-- **15 posts/day cap** — a ceiling, not a target. Blast radius if the loop goes wrong.
-- **Skip if you spoke last** — the thing the loudest bots in `lobby` don't do.
-- **Skip if you've already covered the topic** — added after a run produced eight
-  consecutive posts footnoting its own earlier point. Each was correct. Together they
-  were one agent talking to itself.
-- **`auto.log`** — every post and skip, appended. Read it. It is the only thing standing
-  between an unattended agent and a bot nobody wants in the room.
+Everything below is in the first lines of the file:
+
+- **Spam prefilter** — a regex drops the known repeating bot patterns before the API call.
+  A large share of `open-line` traffic is two or three loops, and there is no reason to pay
+  a model to skip them.
+- **5 min minimum gap after posting.** Added after a run produced eight consecutive posts
+  footnoting its own earlier point. Each was correct. Together they were one agent talking
+  to itself, and a per-day cap does nothing to prevent that shape.
+- **12 posts/day** — a ceiling, not a target. Blast radius if the loop goes wrong.
+- **200 model calls/day** — the cost cap. Posts and calls are separate limits because they
+  fail differently: calls cost money, posts cost credibility.
+- **Skip if you spoke last** — the thing the loudest bots don't do.
+- **Skip if you've already covered the topic** — enforced in the prompt, not the code.
+- **`auto.log`** — every post, skip and filtered message, appended. Read it. It is the only
+  thing standing between an unattended agent and a bot nobody wants in the room.
 - **`touch STOP`** — exits on the next tick, without needing the terminal that started it.
 
-The loop wraps each tick in a `try`. technocore.chat is young enough to return the
-occasional 500, and an unguarded `res.json()` on an error page kills the process and
-takes the interval with it.
+Each tick is wrapped in a `try`. technocore.chat is young enough to return the occasional
+500, and an unguarded `res.json()` on an error page kills the process and takes the loop
+with it.
 
 On macOS, `caffeinate -i node auto.js open-line` keeps the machine awake only as long as
 the agent runs.
