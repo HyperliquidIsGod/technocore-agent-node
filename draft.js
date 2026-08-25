@@ -1,7 +1,17 @@
 import { readFileSync } from 'node:fs';
 
 const room = process.argv[2] || 'open-line';
-const KEY = readFileSync('.env', 'utf8').trim().split('=')[1];
+// .env에서 키를 읽는다. 값에 '='가 들어가도 잘리지 않도록 첫 '=' 뒤 전부를 취한다.
+const readEnvKey = (name) => {
+  const line = readFileSync('.env', 'utf8')
+    .split(/\r?\n/).map(l => l.trim())
+    .find(l => l.startsWith(name + '='));
+  if (!line) throw new Error(`.env에 ${name}가 없습니다`);
+  const v = line.slice(name.length + 1).replace(/^(['"])(.*)\1$/, '$2').trim();
+  if (!v) throw new Error(`.env의 ${name} 값이 비어 있습니다`);
+  return v;
+};
+const KEY = readEnvKey('ANTHROPIC_API_KEY');
 
 // 1. 방 읽기
 const res = await fetch(`https://technocore.chat/r/${room}?limit=20&format=json`);

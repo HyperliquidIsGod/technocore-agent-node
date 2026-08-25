@@ -6,10 +6,24 @@ const ROOM = process.argv[2] || 'open-line';
 const MAX_CALLS_PER_DAY = 200;      // API 판단 횟수 상한 (비용)
 const MAX_POSTS_PER_DAY = 20;       // 게시 상한 (스팸 방지)
 const MIN_GAP_MS = 5 * 60 * 1000;   // 답한 뒤 최소 간격
-const KEY = readFileSync('.env', 'utf8').trim().split('=')[1];
+// .env에서 키를 읽는다. 값에 '='가 들어가도 잘리지 않도록 첫 '=' 뒤 전부를 취한다.
+const readEnvKey = (name) => {
+  const line = readFileSync('.env', 'utf8')
+    .split(/\r?\n/).map(l => l.trim())
+    .find(l => l.startsWith(name + '='));
+  if (!line) throw new Error(`.env에 ${name}가 없습니다`);
+  const v = line.slice(name.length + 1).replace(/^(['"])(.*)\1$/, '$2').trim();
+  if (!v) throw new Error(`.env의 ${name} 값이 비어 있습니다`);
+  return v;
+};
+const KEY = readEnvKey('ANTHROPIC_API_KEY');
 
 // 스팸 패턴 — API에 보내지 않고 코드에서 거름
 const SPAM = /elonism|argue in \/r\/|limit i hit: a |flock is ai|meters breath|name=tc-/i;
+
+// 서버는 저장 전 텍스트를 한 줄로 만든다(single-line sweep). 서명 대상은 그 이후의
+// 텍스트이므로, 미리 한 줄로 접어두지 않으면 개행이 든 답은 서명이 어긋나 거부된다.
+const oneLine = (s) => s.replace(/\s+/g, ' ').trim();
 
 let calls = 0, posted = 0, dayStart = Date.now(), lastPost = 0, lastSeq = null;
 
@@ -95,11 +109,22 @@ POST: <reply under 240 characters>`;
   const text = out.content[0].text.trim();
   if (!text.startsWith('POST:')) { log(`SKIP (판단 ${calls}/${MAX_CALLS_PER_DAY})`); return; }
 
-  const body = text.slice(5).trim().slice(0, 240);
+  const body = oneLine(text.slice(5)).slice(0, 240).trim();
+  if (!body) { log('빈 본문, 건너뜀'); return; }
+
   const nonce = Date.now();
   const sig = sign(null, Buffer.from(`${ROOM}|${nonce}|${body}`), privateKey).toString('base64url');
   const pr = await fetch(`https://technocore.chat/r/${ROOM}/say-signed/${DID}/${sig}/${nonce}/${encodeURIComponent(body)}`);
-  posted++; lastPost = Date.now();
+
+  // 시도했으면 성패와 무관하게 간격을 둔다 — 실패가 계속될 때 롱폴링 속도로
+  // 판단 호출을 태우지 않기 위한 백오프.
+  lastPost = Date.now();
+  if (!pr.ok) {
+    const why = await pr.text().catch(() => '');
+    log(`게시 실패 ${pr.status} (판단 ${calls}/${MAX_CALLS_PER_DAY}): ${why.slice(0, 200)} | 본문: ${body}`);
+    return;
+  }
+  posted++;
   log(`게시(${posted}/${MAX_POSTS_PER_DAY}) 판단(${calls}/${MAX_CALLS_PER_DAY}) ${pr.status}: ${body}`);
 }
 
