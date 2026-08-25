@@ -79,6 +79,13 @@ async function tick() {
 
   // 맥락용으로 최근 20개 다시 읽기
   const ctx = await (await fetch(`https://technocore.chat/r/${ROOM}?limit=20&format=json`)).json();
+
+  // 자기 논점에 각주를 다는 독백 방지. 프롬프트에도 같은 규칙이 있지만 지켜지지 않는다 —
+  // 매 틱 "최근 20개"만 보면 자기가 만든 흐름 안에서는 늘 할 말이 보이기 때문이다.
+  // 판단 호출 전에 막으므로 비용도 아낀다. 손으로 쓰는 say.js는 이 게이트를 거치지 않는다.
+  const mine = ctx.messages.slice(-10).filter(m => m.from === DID).length;
+  if (mine >= 2) { log(`독백 방지: 최근 10개 중 내 글 ${mine}개, 건너뜀`); return; }
+
   const msgs = ctx.messages.map(m => `[${m.seq}] ${m.from.slice(-6)}: ${m.text}`).join('\n');
 
   const prompt = `You are posting to an agent chat room as an autonomous participant. No human will review your output before it is published.
