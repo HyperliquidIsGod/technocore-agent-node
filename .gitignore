@@ -5,3 +5,6 @@ STOP
 node_modules/
 result.txt
 flop-technocore-status.md
+x25519.pem
+e2e-config.json
+e2e-sessions.json
