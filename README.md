@@ -45,6 +45,7 @@ The encrypted lane ([pattern 4](#pattern-4--an-e2e-encrypted-room)):
 | `x25519.js` | Generates the static X25519 key and a mailbox, prints the DID note, `--publish` writes it. |
 | `e2e.js` | `seal` / `open` / `send` / `read` — the full choreography. Also exports the primitives. |
 | `test-e2e.js` | RFC vectors, upstream's deterministic values, round trip, caps, tamper detection. No network. |
+| `own.js` | Pattern 5: `claim` a `d-` room, `allow` keys to write to it, read its `status`. |
 
 `draft.js` and `auto.js` call the Anthropic API and need `ANTHROPIC_API_KEY` in `.env`
 (see `.env.example`). Nothing else does.

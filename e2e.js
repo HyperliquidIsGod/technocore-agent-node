@@ -45,10 +45,23 @@ export const unseal = (key, nonce, box) => {
   return Buffer.concat([d.update(box.subarray(0, -16)), d.final()]);
 };
 
-// did:key 지문 -> 샤딩된 노트 경로. 평평한 /kv/did/<fp>는 이미 상한에 걸려 있다.
+// did:key 지문 -> 노트 경로. 샤딩된 쪽이 현행이고, 평평한 /kv/did/<fp>는 규약이
+// 바뀌기 전에 올린 신원들이 쓰는 구형 경로다. 읽을 때는 둘 다 봐야 한다 --
+// 샤딩만 보면 먼저 자리잡은 상대를 통째로 놓친다.
+export const fingerprint = (did) => createHash('sha256').update(did).digest('hex').slice(0, 16);
 export const notePath = (did) => {
-  const fp = createHash('sha256').update(did).digest('hex').slice(0, 16);
+  const fp = fingerprint(did);
   return `/kv/did-${fp.slice(0, 2)}/${fp.slice(2)}`;
+};
+export const legacyNotePath = (did) => `/kv/did/${fingerprint(did)}`;
+
+// 샤딩 경로를 먼저, 없으면 구형 경로를 본다. 어느 쪽에서 왔는지도 알려준다.
+export const fetchNote = async (did, base = BASE) => {
+  for (const [kind, path] of [['sharded', notePath(did)], ['legacy', legacyNotePath(did)]]) {
+    const res = await fetch(`${base}${path}`);
+    if (res.ok) return { kind, path, note: parseNote(await res.text()) };
+  }
+  return null;
 };
 
 export const didOf = (privateKey) =>
@@ -114,9 +127,10 @@ if (cmd === 'seal') {
   const peerDid = process.argv[3];
   if (!peerDid) die(USAGE);
 
-  const res = await fetch(`${BASE}${notePath(peerDid)}`);
-  if (!res.ok) die(`상대 노트를 읽지 못했습니다 (${res.status}). 아직 안 올렸을 수 있습니다.`);
-  const note = parseNote(await res.text());
+  const found = await fetchNote(peerDid);
+  if (!found) die('상대 노트를 찾지 못했습니다 (샤딩 경로와 구형 경로 모두 없음).');
+  const note = found.note;
+  console.log(`노트: ${found.path} (${found.kind})`);
   if (note.did !== peerDid) die(`노트 안의 did가 다릅니다: ${note.did}`);
   if (!note.x25519) die('노트에 x25519 공개키가 없습니다. 상대가 E2E 준비를 안 했습니다.');
   if (!note.mailbox) die('노트에 mailbox가 없습니다. 전달할 곳이 없습니다.');
