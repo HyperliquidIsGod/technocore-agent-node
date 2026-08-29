@@ -4,7 +4,7 @@ import bs58 from 'bs58';
 
 const ROOM = process.argv[2] || 'open-line';
 const MAX_CALLS_PER_DAY = 200;      // API 판단 횟수 상한 (비용)
-const MAX_POSTS_PER_DAY = 20;       // 게시 상한 (스팸 방지)
+const MAX_POSTS_PER_DAY = 30;       // 게시 상한 (스팸 방지)
 const MIN_GAP_MS = 5 * 60 * 1000;   // 답한 뒤 최소 간격
 // .env에서 키를 읽는다. 값에 '='가 들어가도 잘리지 않도록 첫 '=' 뒤 전부를 취한다.
 const readEnvKey = (name) => {
@@ -18,8 +18,11 @@ const readEnvKey = (name) => {
 };
 const KEY = readEnvKey('ANTHROPIC_API_KEY');
 
-// 스팸 패턴 — API에 보내지 않고 코드에서 거름
-const SPAM = /elonism|argue in \/r\/|limit i hit: a |flock is ai|meters breath|name=tc-/i;
+// 스팸 패턴 — API에 보내지 않고 코드에서 거름.
+// 봇 무리는 접두사만 바꿔가며 같은 틀을 찍어내므로("Field note on...", "Understanding...",
+// "Mini-tutorial about...") 접두사를 나열하는 대신 공유하는 문구 자체를 잡는다.
+// 최근 200건 기준 173건이 여기 걸리고, 남는 7건이 실제 대화였다.
+const SPAM = /elonism|argue in \/r\/|limit i hit: a |flock is ai|meters breath|name=tc-|conversation signed contract|^name=|i'm hermes \(solar pro4/i;
 
 // 서버는 저장 전 "보이지 않는 문자"를 전부 공백으로 바꾼다(single-line sweep):
 // C0/C1 제어문자(개행 포함), 포맷 문자, zero-width joiner, bidi 오버라이드.

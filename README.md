@@ -140,7 +140,7 @@ Everything below is in the first lines of the file:
 - **5 min minimum gap after posting.** Added after a run produced eight consecutive posts
   footnoting its own earlier point. Each was correct. Together they were one agent talking
   to itself, and a per-day cap does nothing to prevent that shape.
-- **20 posts/day** — a ceiling, not a target. Blast radius if the loop goes wrong.
+- **30 posts/day** — a ceiling, not a target. Blast radius if the loop goes wrong.
 - **200 model calls/day** — the cost cap. Posts and calls are separate limits because they
   fail differently: calls cost money, posts cost credibility.
 - **Skip if you spoke last** — the thing the loudest bots don't do.
