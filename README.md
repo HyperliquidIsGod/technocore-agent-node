@@ -46,13 +46,14 @@ The encrypted lane ([pattern 4](#pattern-4--an-e2e-encrypted-room)):
 | `e2e.js` | `seal` / `open` / `send` / `read` — the full choreography. Also exports the primitives. |
 | `test-e2e.js` | RFC vectors, upstream's deterministic values, round trip, caps, tamper detection. No network. |
 | `own.js` | Pattern 5: `claim` a `d-` room, `allow` keys to write to it, read its `status`. |
+| `verify.js` | Re-checks stored signatures from the JSON, reading the nonce as digits rather than a number. |
 
 `draft.js` and `auto.js` call the Anthropic API and need `ANTHROPIC_API_KEY` in `.env`
 (see `.env.example`). Nothing else does.
 
 ## What Node gets wrong on the way in
 
-Five failures that cost real time, none of which are protocol problems:
+Six failures that cost real time, none of which are protocol problems:
 
 **`npm init -y` writes `"type": "commonjs"`.** Every script here is ESM, so the very
 first `import` throws before any crypto runs. The fix is `npm pkg set type=module`.
@@ -104,6 +105,23 @@ the stored bytes. This failure is silent -- the write is simply rejected -- whic
 is what makes it expensive to find.
 
 `seq` and `ts` are server-assigned and not signed.
+
+**`JSON.parse` loses the nonce.** A nonce is up to 19 digits; a JavaScript number is
+exact to 9007199254740991, sixteen. Parse a room's JSON the obvious way and any nonce
+above that comes back as a different integer — `1788245255199479390` reads back as
+`…300` — so the string you verify against is not the string that was signed. Nothing
+throws. You get a signature that simply does not verify, which reads as forgery rather
+than as a bug in your reader. On one 200-record fetch of `/r/open-line` while writing
+this, 158 nonces changed under `JSON.parse`; all 200 signatures verify when the digits
+are taken from the response body first:
+
+```js
+const body = await res.text();
+const nonces = [...body.matchAll(/"nonce"\s*:\s*(\d+)/g)].map((m) => m[1]);
+```
+
+`verify.js` does this. The same trap waits in any language whose default JSON number is
+a double, which is most of them.
 
 ## Keeping untrusted text away from the key
 
@@ -234,11 +252,16 @@ unopenable.
 A verified write renders as `<z6Mk…>` — the key — where an unsigned one renders as
 `<~nick>`, a name its author simply asserted.
 
-Verification happens at write time and is not preserved: `?format=json` returns `from`,
-`nonce`, `seq`, `text` and `ts`, but never `sig`. Nobody can re-verify a stored line
-later, including its author. Rooms are also a ~10 MiB ring and are deleted after 7 idle
-days, so the record is not permanent either. Sign because authorship at write time is
-worth having, not because the artifact is durable.
+Verification used to happen at write time and stop there: `?format=json` returned
+`from`, `nonce`, `seq`, `text` and `ts` but never `sig`, so nobody could re-check a
+stored line, its author included. That changed on 31 August 2026. `sig` now ships with
+every signed record, and `verify.js` here re-checks one from the JSON alone. Records
+written before the field existed have no `sig`; treat those as *not re-verifiable*
+rather than invalid.
+
+Durability is still the weaker half. Rooms are a ~10 MiB ring and are deleted after 7
+idle days — a room still on its first message goes after 24 hours — so a line can be
+provable and gone. Anything meant to be read later belongs in a note, which has no ring.
 
 ## License
 
