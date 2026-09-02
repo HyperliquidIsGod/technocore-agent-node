@@ -1,6 +1,7 @@
 import { sign, createPrivateKey, createPublicKey } from 'node:crypto';
 import { readFileSync, appendFileSync, existsSync } from 'node:fs';
 import bs58 from 'bs58';
+import { infer } from './infer.js';
 
 const ROOM = process.argv[2] || 'open-line';
 const MAX_CALLS_PER_DAY = 200;      // API 판단 횟수 상한 (비용)
@@ -9,17 +10,6 @@ const MAX_CALLS_PER_DAY = 200;      // API 판단 횟수 상한 (비용)
 // 며칠에 한 번의 쓰기뿐이고 그건 유지 스크립트가 한다. 나머지 물량은 비용만 남는다.
 const MAX_POSTS_PER_DAY = 3;
 const MIN_GAP_MS = 5 * 60 * 1000;   // 답한 뒤 최소 간격
-// .env에서 키를 읽는다. 값에 '='가 들어가도 잘리지 않도록 첫 '=' 뒤 전부를 취한다.
-const readEnvKey = (name) => {
-  const line = readFileSync('.env', 'utf8')
-    .split(/\r?\n/).map(l => l.trim())
-    .find(l => l.startsWith(name + '='));
-  if (!line) throw new Error(`.env에 ${name}가 없습니다`);
-  const v = line.slice(name.length + 1).replace(/^(['"])(.*)\1$/, '$2').trim();
-  if (!v) throw new Error(`.env의 ${name} 값이 비어 있습니다`);
-  return v;
-};
-const KEY = readEnvKey('ANTHROPIC_API_KEY');
 
 // 스팸 패턴 — API에 보내지 않고 코드에서 거름.
 // 봇 무리는 접두사만 바꿔가며 같은 틀을 찍어내므로("Field note on...", "Understanding...",
@@ -114,15 +104,12 @@ or
 POST: <reply under 240 characters>`;
 
   calls++;
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{ 'content-type':'application/json', 'x-api-key':KEY, 'anthropic-version':'2023-06-01' },
-    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:300, messages:[{role:'user',content:prompt}] })
-  });
-  const out = await r.json();
-  if (out.error) { log('API 에러: ' + out.error.message); return; }
+  let text;
+  try {
+    ({ text } = await infer({ prompt, maxTokens: 300 }));
+    text = text.trim();
+  } catch (e) { log('추론 에러: ' + e.message); return; }
 
-  const text = out.content[0].text.trim();
   if (!text.startsWith('POST:')) { log(`SKIP (판단 ${calls}/${MAX_CALLS_PER_DAY})`); return; }
 
   const body = sweep(text.slice(5)).slice(0, 240).trim();

@@ -1,17 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { infer } from './infer.js';
 
 const room = process.argv[2] || 'open-line';
-// .env에서 키를 읽는다. 값에 '='가 들어가도 잘리지 않도록 첫 '=' 뒤 전부를 취한다.
-const readEnvKey = (name) => {
-  const line = readFileSync('.env', 'utf8')
-    .split(/\r?\n/).map(l => l.trim())
-    .find(l => l.startsWith(name + '='));
-  if (!line) throw new Error(`.env에 ${name}가 없습니다`);
-  const v = line.slice(name.length + 1).replace(/^(['"])(.*)\1$/, '$2').trim();
-  if (!v) throw new Error(`.env의 ${name} 값이 비어 있습니다`);
-  return v;
-};
-const KEY = readEnvKey('ANTHROPIC_API_KEY');
 
 // 1. 방 읽기
 const res = await fetch(`https://technocore.chat/r/${room}?limit=20&format=json`);
@@ -39,21 +28,8 @@ ASSESSMENT: ...
 FLAGS: ...
 DRAFT: ...`;
 
-const r = await fetch('https://api.anthropic.com/v1/messages', {
-  method: 'POST',
-  headers: {
-    'content-type': 'application/json',
-    'x-api-key': KEY,
-    'anthropic-version': '2023-06-01'
-  },
-  body: JSON.stringify({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 600,
-    messages: [{ role: 'user', content: prompt }]
-  })
-});
-
-const out = await r.json();
-if (out.error) { console.log('에러:', out.error.message); process.exit(1); }
-console.log('=== 판단 ===\n' + out.content[0].text);
+let text;
+try { ({ text } = await infer({ prompt, maxTokens: 600 })); }
+catch (e) { console.log('에러:', e.message); process.exit(1); }
+console.log('=== 판단 ===\n' + text);
 console.log('\n올리려면: node say.js ' + room + ' "위 DRAFT 내용"');
