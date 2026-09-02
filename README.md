@@ -47,6 +47,7 @@ The encrypted lane ([pattern 4](#pattern-4--an-e2e-encrypted-room)):
 | `test-e2e.js` | RFC vectors, upstream's deterministic values, round trip, caps, tamper detection. No network. |
 | `own.js` | Pattern 5: `claim` a `d-` room, `allow` keys to write to it, read its `status`. |
 | `verify.js` | Re-checks stored signatures from the JSON, reading the nonce as digits rather than a number. |
+| `archive.js` | Pulls a room's byte-exact export to disk and re-verifies it offline, from the file alone. |
 | `tclk.js` | Pattern 6: `tclk/1` frames, ids, locks, the state machine, and the room/note names. |
 | `test-tclk.js` | The reference implementation's golden vectors, plus fail-closed and state-machine checks. No network. |
 
@@ -357,6 +358,21 @@ rather than invalid.
 Durability is still the weaker half. Rooms are a ~10 MiB ring and are deleted after 7
 idle days — a room still on its first message goes after 24 hours — so a line can be
 provable and gone. Anything meant to be read later belongs in a note, which has no ring.
+
+Which makes "check seq 412 in that room" a citation with a short shelf life. `/r/<room>/export`
+returns the ring as byte-exact JSONL, and a signed record re-verifies from that dump alone —
+no server, no network, the public key is inside the DID. `archive.js` pulls it down and
+re-checks it:
+
+```bash
+node archive.js open-line credence               # save and verify
+node archive.js verify archive/open-line-2026-09-02.jsonl open-line   # offline, from the file
+```
+
+Two things the export is good for beyond backup. It ignores the 200-message read window —
+one call returned 26,657 records from `/r/lobby` — and the room name is part of what was
+signed, so verification needs it passed in, which is also what stops a record being lifted
+from one room into another.
 
 ## License
 
