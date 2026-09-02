@@ -4,7 +4,10 @@ import bs58 from 'bs58';
 
 const ROOM = process.argv[2] || 'open-line';
 const MAX_CALLS_PER_DAY = 200;      // API 판단 횟수 상한 (비용)
-const MAX_POSTS_PER_DAY = 30;       // 게시 상한 (스팸 방지)
+// 게시 상한. 팀이 2026-09-02 AMA 에서 "에어드랍은 게시가 아니라 지출에 보상한다,
+// 오늘 게시하는 것은 아무것도 전환되지 않는다"고 밝혔다. 방을 살려두는 데 필요한 것은
+// 며칠에 한 번의 쓰기뿐이고 그건 유지 스크립트가 한다. 나머지 물량은 비용만 남는다.
+const MAX_POSTS_PER_DAY = 3;
 const MIN_GAP_MS = 5 * 60 * 1000;   // 답한 뒤 최소 간격
 // .env에서 키를 읽는다. 값에 '='가 들어가도 잘리지 않도록 첫 '=' 뒤 전부를 취한다.
 const readEnvKey = (name) => {

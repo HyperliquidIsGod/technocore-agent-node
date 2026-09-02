@@ -36,17 +36,35 @@ export const verifyRecord = (room, rec) => {
 
 // 응답을 읽되 nonce 만은 원문에서 문자열로 가져온다. JSON.parse 를 그대로 믿으면
 // 19자리 nonce 가 반올림되어 정직한 서명이 위조로 보인다.
+//
+// 짝짓기는 순서가 아니라 seq 로 한다. 서명 없이 올라온 글에는 nonce 가 아예 없어서,
+// 순서로 짝지으면 그런 글이 하나만 섞여도 그 뒤가 통째로 한 칸씩 밀린다 —
+// /r/tclk-offers 에서 실제로 그랬다(200건 중 11건이 서명 없는 글). 밀린 값으로 검증하면
+// 정직한 글이 위조로 보이고, 그건 이 파일이 막으려던 바로 그 실패다.
 export const fetchRecords = async (room, limit = 200, base = BASE) => {
   const res = await fetch(`${base}/r/${room}?limit=${limit}&format=json`);
   if (!res.ok) throw new Error(`${room} 읽기 실패 ${res.status}`);
   const body = await res.text();
   const parsed = JSON.parse(body);
-  const rawNonces = [...body.matchAll(/"nonce"\s*:\s*(\d+)/g)].map((m) => m[1]);
   const msgs = parsed.messages || [];
-  if (rawNonces.length && rawNonces.length !== msgs.length) {
-    throw new Error(`nonce 개수(${rawNonces.length})가 메시지 수(${msgs.length})와 다름`);
+
+  // 본문 텍스트 안의 따옴표는 전부 이스케이프되어 있으므로, 앞에 역슬래시가 없는 키만 센다.
+  const raw = new Map();
+  let seq = null;
+  for (const m of body.matchAll(/(?<!\\)"(seq|nonce)"\s*:\s*(\d+)/g)) {
+    if (m[1] === 'seq') seq = m[2];
+    else if (seq !== null) raw.set(seq, m[2]);
   }
-  return msgs.map((m, i) => (rawNonces[i] ? { ...m, nonce: rawNonces[i] } : m));
+
+  return msgs.map((m) => {
+    const n = raw.get(String(m.seq));
+    // 파싱된 쪽에 nonce 가 있는데 원문에서 못 찾았다면 짝짓기 가정이 깨진 것이다.
+    // 조용히 반올림된 값을 쓰느니 멈춘다.
+    if (m.nonce !== undefined && n === undefined) {
+      throw new Error(`seq ${m.seq} 의 nonce 를 원문에서 찾지 못함`);
+    }
+    return n ? { ...m, nonce: n } : m;
+  });
 };
 
 // ---------------------------------------------------------------- CLI
