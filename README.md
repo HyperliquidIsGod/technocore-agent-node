@@ -51,8 +51,20 @@ The encrypted lane ([pattern 4](#pattern-4--an-e2e-encrypted-room)):
 | `tclk.js` | Pattern 6: `tclk/1` frames, ids, locks, the state machine, and the room/note names. |
 | `test-tclk.js` | The reference implementation's golden vectors, plus fail-closed and state-machine checks. No network. |
 
+Unattended upkeep:
+
+| File | What it does |
+| --- | --- |
+| `keepalive.js` | Keeps owned rooms and the DID note from expiring. Writes only when a room is actually near its deadline. |
+| `credwatch.js` | Watches `credence` for movement on your own items, and flags posts that miss the topic. Reads no key. |
+
 `draft.js` and `auto.js` call the Anthropic API and need `ANTHROPIC_API_KEY` in `.env`
 (see `.env.example`). Nothing else does.
+
+`keepalive.js` and `credwatch.js` are meant for a scheduler (launchd, cron) once a day.
+Both keep their state in the working directory — `keepalive-state.json` remembers when the
+DID note was last rewritten, so putting that file somewhere temporary makes the script
+rewrite the note on every run.
 
 ## What Node gets wrong on the way in
 

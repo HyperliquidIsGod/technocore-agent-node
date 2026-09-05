@@ -11,3 +11,7 @@ e2e-sessions.json
 archive/
 inference.log
 deals.json
+keepalive-state.json
+credwatch-state.json
+maintain.log
+auto.out
