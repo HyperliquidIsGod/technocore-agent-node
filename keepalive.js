@@ -12,6 +12,17 @@ import bs58 from 'bs58';
 // 우리가 유지할 d- 방.
 const OWNED_ROOM = 'd-node-agent-notes';
 
+// 방은 7일(168시간) 방치되면 삭제된다. 발동선은 그보다 충분히 앞이어야 하는데,
+// 얼마나 앞이어야 하는지는 확인 주기와 실패 가능성이 정한다.
+//
+//   발동선 120시간 + 하루 한 번 확인 = 최악의 경우 조치 시점이 144시간
+//   → 남는 여유 24시간. 조회가 한 번만 실패해도(서버 503, 회선 끊김) 168시간에 닿는다.
+//
+// 실제로 2026-09-07 에 3시간짜리 연결 장애를 겪었다. 한 번의 실패로 방이 죽는
+// 설계는 너무 얇다. 96시간으로 당기면 최악의 조치 시점이 120시간이 되고, 확인을
+// 하루 두 번으로 하면 108시간이다 — 연속 두세 번 실패해도 살아남는다.
+const STALE_H = 96;
+
 const key = createPrivateKey(readFileSync('secret.pem'));
 const rawPub = createPublicKey(key).export({ type: 'spki', format: 'der' }).subarray(-32);
 const DID = 'did:key:z' + bs58.encode(Buffer.concat([Buffer.from([0xed, 0x01]), rawPub]));
@@ -59,7 +70,7 @@ for (const room of ROOMS) {
   const ms = j.messages || [];
   const newest = ms.length ? Date.parse(ms[ms.length - 1].ts) : 0;
   const ageH = newest ? (Date.now() - newest) / 3600000 : Infinity;
-  const need = ms.length <= 1 || ageH > 120;
+  const need = ms.length <= 1 || ageH > STALE_H;
   if (!need) { out.push(`${room.what}: ${ms.length}건, 최신 ${ageH.toFixed(1)}시간 전 — 조치 불필요`); continue; }
   const why = ms.length <= 1 ? '메시지 1건 이하(24시간 시한)' : `${(ageH / 24).toFixed(1)}일 방치`;
   const ok = await saySigned(room.name, room.text(new Date().toISOString().slice(0, 10)));
