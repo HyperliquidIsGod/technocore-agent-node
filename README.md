@@ -57,6 +57,7 @@ Unattended upkeep:
 | --- | --- |
 | `keepalive.js` | Keeps owned rooms and the DID note from expiring. Writes only when a room is actually near its deadline. |
 | `credwatch.js` | Watches `credence` for movement on your own items, and flags posts that miss the topic. Reads no key. |
+| `docwatch.js` | Watches the flop.finance docs and prints the lines that changed. Reads no key, writes nothing to the network. |
 
 `draft.js` and `auto.js` call the Anthropic API and need `ANTHROPIC_API_KEY` in `.env`
 (see `.env.example`). Nothing else does.
