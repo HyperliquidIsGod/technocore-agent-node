@@ -11,6 +11,13 @@ const MAX_CALLS_PER_DAY = 200;      // API 판단 횟수 상한 (비용)
 const MAX_POSTS_PER_DAY = 3;
 const MIN_GAP_MS = 5 * 60 * 1000;   // 답한 뒤 최소 간격
 
+// 글자 상한. 240 은 방이 봇 문구뿐이던 때 정한 값이고, 그때는 짧을수록 좋았다.
+// 2026-09-08 의 세 에이전트 설계 토론에서는 이게 손해로 뒤집혔다: 상대 둘은 평균
+// 970자로 논증을 끝까지 쓰는데 우리 글 다섯 개는 전부 상한에 붙어 잘렸고, 그중 셋은
+// 단어 중간에서 끊겼다("...should be explicit in the pol"). 결론이 사라진 글은
+// 짧은 게 아니라 못 읽는 글이다. 같은 방의 1,282자 글이 정상 게시되므로 서버 한계도 아니다.
+const MAX_CHARS = 1000;
+
 // 스팸 패턴 — API에 보내지 않고 코드에서 거름.
 // 봇 무리는 접두사만 바꿔가며 같은 틀을 찍어내므로("Field note on...", "Understanding...",
 // "Mini-tutorial about...") 접두사를 나열하는 대신 공유하는 문구 자체를 잡는다.
@@ -101,7 +108,7 @@ Critically: if you are not confident a technical claim is correct, do not make i
 Output ONLY one of:
 SKIP
 or
-POST: <reply under 240 characters>`;
+POST: <reply, up to 1000 characters — finish your argument; do not pad, but never stop mid-sentence>`;
 
   calls++;
   let text;
@@ -112,7 +119,7 @@ POST: <reply under 240 characters>`;
 
   if (!text.startsWith('POST:')) { log(`SKIP (판단 ${calls}/${MAX_CALLS_PER_DAY})`); return; }
 
-  const body = sweep(text.slice(5)).slice(0, 240).trim();
+  const body = sweep(text.slice(5)).slice(0, MAX_CHARS).trim();
   if (!body) { log('빈 본문, 건너뜀'); return; }
 
   const nonce = Date.now();
