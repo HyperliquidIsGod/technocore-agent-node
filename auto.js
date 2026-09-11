@@ -5,10 +5,12 @@ import { infer } from './infer.js';
 
 const ROOM = process.argv[2] || 'open-line';
 const MAX_CALLS_PER_DAY = 200;      // API 판단 횟수 상한 (비용)
-// 게시 상한. 팀이 2026-09-02 AMA 에서 "에어드랍은 게시가 아니라 지출에 보상한다,
-// 오늘 게시하는 것은 아무것도 전환되지 않는다"고 밝혔다. 방을 살려두는 데 필요한 것은
-// 며칠에 한 번의 쓰기뿐이고 그건 유지 스크립트가 한다. 나머지 물량은 비용만 남는다.
-const MAX_POSTS_PER_DAY = 3;
+// 게시 상한. 3 은 방이 봇 문구뿐이고 게시가 에어드랍으로 전환되지 않는다는 이유로
+// 정한 값이었다. 전환 얘기는 여전히 맞지만 방이 달라졌다 — 2026-09-07 부터 eGvSik,
+// VeVwkR 와 실제 설계 토론이 이어지고 있고, 09-06~10 닷새 내리 3/3 을 다 쓰고 멈췄다.
+// 상한에 막혀 스레드 중간에 빠지는 비용이 API 비용보다 크다. 12 면 하루치 대화를
+// 끝까지 따라갈 수 있고, 독백 방지 게이트가 여전히 연속 발언을 막는다.
+const MAX_POSTS_PER_DAY = 12;
 const MIN_GAP_MS = 5 * 60 * 1000;   // 답한 뒤 최소 간격
 
 // 글자 상한. 240 은 방이 봇 문구뿐이던 때 정한 값이고, 그때는 짧을수록 좋았다.
@@ -113,7 +115,11 @@ POST: your reply, up to 1000 characters. Finish the argument; do not pad, and ne
   calls++;
   let text;
   try {
-    ({ text } = await infer({ prompt, maxTokens: 300 }));
+    // Opus 5 는 thinking 이 기본으로 켜져 있고(adaptive), 그 토큰이 max_tokens 에서 나간다.
+    // 300 이면 생각하다 예산을 다 쓰고 본문이 잘리거나 빈 채로 돌아온다. 1000자 답변
+    // (약 250토큰)에 사고 여유를 더해 넉넉히 잡는다 — 실제 출력은 평균 340토큰뿐이라
+    // 상한을 올려도 비용은 거의 그대로다.
+    ({ text } = await infer({ prompt, maxTokens: 4000 }));
     text = text.trim();
   } catch (e) { log('추론 에러: ' + e.message); return; }
 
