@@ -10,6 +10,7 @@
 // 여기가 하는 일은 그 단어가 지금 우리 차례이고 우리가 쓸 수 있는지 판정하는 것뿐이다.
 import { readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { DID, CONTEST, post, read } from './sonnet.js';
+import { fetchExport, parseLine } from './archive.js';
 import { wordOk } from './sonnet.js';
 
 const GAME_ID = 'quorum';
@@ -57,8 +58,11 @@ const tick = async () => {
   if (!existsSync(FROZEN)) return log('확정 텍스트 없음 — 팀 합의 전까지 두지 않음');
   const frozen = readFileSync(FROZEN, 'utf8').split(/\s+/).filter(Boolean);
 
-  const disc = await read('mb-sonnet-1-discovery');
-  if (!disc) return log('discovery 조회 실패 — 보류');
+  // discovery 는 기본 읽기가 최근 50건만 준다. 로스터 서명은 몇 시간에 걸쳐 들어오므로
+  // 그 창으로 보면 먼저 서명한 사람이 안 보이고 영원히 5/5 가 안 된다. export 로 전체를 받는다.
+  let disc;
+  try { disc = { messages: (await fetchExport('mb-sonnet-1-discovery')).split('\n').filter(Boolean).map(parseLine) }; }
+  catch (e) { return log('discovery export 실패 — 보류: ' + e.message); }
   const signed = rosterSigned(disc.messages || []);
   if (signed.size < ROSTER.length)
     return log(`로스터 서명 ${signed.size}/${ROSTER.length} — 전원 서명 전엔 첫 단어 금지`);
@@ -85,5 +89,8 @@ const tick = async () => {
   log(`${placed.length + 1}번째 "${next}" → ${r.status} ${r.ok ? '전송' : r.body.slice(0, 120)}`);
 };
 
-if (process.argv.includes('--once')) await tick();
-else while (true) { try { await tick(); } catch (e) { log('오류(계속): ' + e.message); } await new Promise((r) => setTimeout(r, 30000)); }
+// 메인 모듈로 실행될 때만 돈다. 이 가드가 없으면 import 하는 쪽에서 무한 루프가 시작된다.
+if (process.argv[1]?.endsWith('sonnet-play.js')) {
+  if (process.argv.includes('--once')) await tick();
+  else while (true) { try { await tick(); } catch (e) { log('오류(계속): ' + e.message); } await new Promise((r) => setTimeout(r, 30000)); }
+}
