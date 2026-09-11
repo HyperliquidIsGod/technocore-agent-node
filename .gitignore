@@ -16,3 +16,8 @@ credwatch-state.json
 maintain.log
 auto.out
 docwatch/
+sonnet/
+sonnet-play-state.json
+sonnet-play.log
+sonnet-play.out
+drafts/
