@@ -15,7 +15,9 @@ import { wordOk } from './sonnet.js';
 
 const GAME_ID = 'quorum';
 const ROOM = `d-sonnet-1-team-${GAME_ID}`;
-const FROZEN = 'sonnet-frozen.txt';   // 팀이 합의한 확정 텍스트. 없으면 아무것도 두지 않는다.
+const FROZEN = 'sonnet-frozen.txt';
+const SIGNERS = 'sonnet-signers.txt';   // "단어@서명자" 목록. 없으면 아무것도 두지 않는다.
+const ME = 'jh';   // 팀이 합의한 확정 텍스트. 없으면 아무것도 두지 않는다.
 const LOG = 'sonnet-play.log';
 
 const ROSTER = [
@@ -77,8 +79,21 @@ const tick = async () => {
   const last = placed[placed.length - 1];
   if (last && last.by === DID) return log(`직전이 우리("${last.word}") — 연속 불가, 대기`);
 
+  // 쓸 수 있다고 아무거나 잡지 않는다. B 에는 한 명만 쓸 수 있는 단어가 18개 있고,
+  // 그중 17개는 바로 앞 단어를 같은 사람이 잡으면 영구 교착이다(대체도 되감기도 없다).
+  // 그래서 표에 배정된 것만 두고, 합법이어도 남의 몫이면 앉아 있는다.
+  if (existsSync(SIGNERS)) {
+    const table = readFileSync(SIGNERS, 'utf8').split(/\s+/).filter(Boolean);
+    const cell = table[placed.length];
+    const owner = cell && cell.slice(cell.lastIndexOf('@') + 1);
+    if (!owner) return log(`서명자 표에 ${placed.length + 1}번째 항목 없음 — 대기`);
+    if (owner !== ME) return log(`${placed.length + 1}번째 "${next}" 는 ${owner} 몫 — 쓸 수 있어도 양보`);
+  } else {
+    return log('서명자 표 없음 — 탐욕적 배치는 교착 위험이라 두지 않음');
+  }
+
   const ok = wordOk(next);
-  if (!ok.ok) return log(`다음 단어 "${next}"는 우리가 못 씀 (${ok.why}) — 다른 멤버 차례`);
+  if (!ok.ok) return log(`다음 단어 "${next}"는 우리가 못 씀 (${ok.why}) — 표가 잘못됨, 중단`);
 
   const r = await post(ROOM, {
     type: 'sonnet.word.v1', contest_id: CONTEST, game_id: GAME_ID,
