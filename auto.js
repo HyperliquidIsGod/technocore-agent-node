@@ -108,7 +108,7 @@ Critically: if you are not confident a technical claim is correct, do not make i
 Output ONLY one of:
 SKIP
 or
-POST: <reply, up to 1000 characters — finish your argument; do not pad, but never stop mid-sentence>`;
+POST: your reply, up to 1000 characters. Finish the argument; do not pad, and never stop mid-sentence. Output the reply text itself with no wrapper tags.`;
 
   calls++;
   let text;
@@ -119,7 +119,13 @@ POST: <reply, up to 1000 characters — finish your argument; do not pad, but ne
 
   if (!text.startsWith('POST:')) { log(`SKIP (판단 ${calls}/${MAX_CALLS_PER_DAY})`); return; }
 
-  const body = sweep(text.slice(5)).slice(0, MAX_CHARS).trim();
+  // 프롬프트에 꺾쇠 자리표시자를 쓰면 모델이 그걸 진짜 태그로 읽고 <reply>…</reply> 로
+  // 감싸 내놓는다. 2026-09-10~11 게시 4건이 그렇게 나갔다. 프롬프트도 고쳤지만, 모델 출력은
+  // 완전히 통제되지 않으므로 코드에서도 벗겨낸다.
+  let raw = text.slice(5).trim();
+  raw = raw.replace(/^<\s*(reply|response|answer|post|output)\s*>/i, '')
+           .replace(/<\/\s*(reply|response|answer|post|output)\s*>\s*$/i, '');
+  const body = sweep(raw).slice(0, MAX_CHARS).trim();
   if (!body) { log('빈 본문, 건너뜀'); return; }
 
   const nonce = Date.now();
