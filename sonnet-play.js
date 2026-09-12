@@ -61,14 +61,20 @@ const tick = async () => {
   if (!existsSync(FROZEN)) return log('확정 텍스트 없음 — 팀 합의 전까지 두지 않음');
   const frozen = readFileSync(FROZEN, 'utf8').split(/\s+/).filter(Boolean);
 
-  // discovery 는 기본 읽기가 최근 50건만 준다. 로스터 서명은 몇 시간에 걸쳐 들어오므로
-  // 그 창으로 보면 먼저 서명한 사람이 안 보이고 영원히 5/5 가 안 된다. export 로 전체를 받는다.
-  let disc;
-  try { disc = { messages: (await fetchExport(DISCOVERY)).split('\n').filter(Boolean).map(parseLine) }; }
-  catch (e) { return log('discovery export 실패 — 보류: ' + e.message); }
-  const signed = rosterSigned(disc.messages || []);
-  if (signed.size < ROSTER.length)
-    return log(`로스터 서명 ${signed.size}/${ROSTER.length} — 전원 서명 전엔 첫 단어 금지`);
+  // 동결 판정은 심판의 roster_ready 접수증으로 한다. 내가 서명을 직접 세면 심판보다
+  // 엄격해질 수 있고(배열 순서·request_id·낡은 동의 때문에 놓치기 쉽다), 그러면 심판이
+  // 이미 방을 연 뒤에도 우리만 영원히 대기한다 — 2026-09-12 에 실제로 그렇게 막혔다.
+  // 판정 주체는 심판이지 우리가 아니다.
+  let ready = false;
+  try {
+    const teamRows = (await fetchExport(ROOM)).split('\n').filter(Boolean).map(parseLine);
+    for (const m of teamRows) {
+      if (!m.text) continue;
+      let d; try { d = JSON.parse(m.text); } catch { continue; }
+      if (d.roster_ready === true && d.contest_id === CONTEST_ID) ready = true;
+    }
+  } catch (e) { return log('팀 방 export 실패 — 보류: ' + e.message); }
+  if (!ready) return log('심판의 roster_ready 접수증 없음 — 첫 단어 금지');
 
   const j = await read(ROOM);
   if (!j) return log('팀 방 조회 실패 — 보류');
