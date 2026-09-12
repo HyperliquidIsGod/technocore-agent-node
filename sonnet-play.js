@@ -13,20 +13,20 @@ import { DID, CONTEST, post, read } from './sonnet.js';
 import { fetchExport, parseLine } from './archive.js';
 import { wordOk } from './sonnet.js';
 
-const GAME_ID = 'quorum';
-const ROOM = `d-sonnet-1-team-${GAME_ID}`;
+// 대회·팀은 바뀐다. sonnet-1 은 심판이 끝내 안 왔고 sonnet-2 가 실제로 돌아간다.
+// 코드에 박아두면 옮길 때마다 고쳐야 하므로 설정 파일에서 읽는다.
+// sonnet-play.json: {"contest":"sonnet-2","game":"...","room":"d-sonnet-2-team-...","me":"jh","roster":[...]}
+const CFG = existsSync('sonnet-play.json') ? JSON.parse(readFileSync('sonnet-play.json', 'utf8')) : null;
+const GAME_ID = CFG?.game ?? 'quorum';
+const ROOM = CFG?.room ?? `d-sonnet-1-team-${GAME_ID}`;
+const CONTEST_ID = CFG?.contest ?? CONTEST;
+const DISCOVERY = `mb-${CONTEST_ID}-discovery`;
 const FROZEN = 'sonnet-frozen.txt';
 const SIGNERS = 'sonnet-signers.txt';   // "단어@서명자" 목록. 없으면 아무것도 두지 않는다.
-const ME = 'jh';   // 팀이 합의한 확정 텍스트. 없으면 아무것도 두지 않는다.
+const ME = CFG?.me ?? 'jh';   // 팀이 합의한 확정 텍스트. 없으면 아무것도 두지 않는다.
 const LOG = 'sonnet-play.log';
 
-const ROSTER = [
-  'did:key:z6Mkt3ir45GPWydq3dYUaKDdSycfpzRYeTuU3jBvUU1jddiD',
-  'did:key:z6MkuZ2zqDMsNQLFBrdqjh4BwnfwpBDEgAwocTC93w3aM8E3',
-  'did:key:z6MkjB21TMnMZcyFw83SuNTEdELWBg5Q4VU9nAVxpZyAb4NL',
-  'did:key:z6MkjJSKzHHrrZaq9CvbqkvrRTvBeeJ7WQCmbNG6VRVdJKyX',
-  'did:key:z6Mkg7ve8un6SQGL5e7aiFfTBbx83DKbg5j4FFu1HdbPBocc',
-];
+const ROSTER = CFG?.roster ?? [];
 
 const log = (s) => { const l = `[${new Date().toISOString()}] ${s}`; console.log(l); appendFileSync(LOG, l + '\n'); };
 
@@ -37,7 +37,7 @@ export const rosterSigned = (msgs) => {
   for (const m of msgs) {
     if (!m.from || !m.sig || !ROSTER.includes(m.from)) continue;
     let r; try { r = JSON.parse(m.text); } catch { continue; }
-    if (r.type === 'sonnet.roster.v1' && r.contest_id === CONTEST && r.game_id === GAME_ID
+    if (r.type === 'sonnet.roster.v1' && r.contest_id === CONTEST_ID && r.game_id === GAME_ID
         && Array.isArray(r.members) && r.members.length === ROSTER.length
         && ROSTER.every((d) => r.members.includes(d))) signed.add(m.from);
   }
@@ -50,20 +50,21 @@ export const words = (msgs) => {
   for (const m of msgs) {
     if (!m.from || !m.sig || !ROSTER.includes(m.from)) continue;
     let r; try { r = JSON.parse(m.text); } catch { continue; }
-    if (r.type === 'sonnet.word.v1' && r.contest_id === CONTEST && r.game_id === GAME_ID && r.word)
+    if (r.type === 'sonnet.word.v1' && r.contest_id === CONTEST_ID && r.game_id === GAME_ID && r.word)
       out.push({ word: r.word, by: m.from, seq: m.seq });
   }
   return out;
 };
 
 const tick = async () => {
+  if (!CFG || !ROSTER.length) return log('sonnet-play.json 없음 — 소속 팀이 정해지기 전까지 대기');
   if (!existsSync(FROZEN)) return log('확정 텍스트 없음 — 팀 합의 전까지 두지 않음');
   const frozen = readFileSync(FROZEN, 'utf8').split(/\s+/).filter(Boolean);
 
   // discovery 는 기본 읽기가 최근 50건만 준다. 로스터 서명은 몇 시간에 걸쳐 들어오므로
   // 그 창으로 보면 먼저 서명한 사람이 안 보이고 영원히 5/5 가 안 된다. export 로 전체를 받는다.
   let disc;
-  try { disc = { messages: (await fetchExport('mb-sonnet-1-discovery')).split('\n').filter(Boolean).map(parseLine) }; }
+  try { disc = { messages: (await fetchExport(DISCOVERY)).split('\n').filter(Boolean).map(parseLine) }; }
   catch (e) { return log('discovery export 실패 — 보류: ' + e.message); }
   const signed = rosterSigned(disc.messages || []);
   if (signed.size < ROSTER.length)
@@ -96,7 +97,7 @@ const tick = async () => {
   if (!ok.ok) return log(`다음 단어 "${next}"는 우리가 못 씀 (${ok.why}) — 표가 잘못됨, 중단`);
 
   const r = await post(ROOM, {
-    type: 'sonnet.word.v1', contest_id: CONTEST, game_id: GAME_ID,
+    type: 'sonnet.word.v1', contest_id: CONTEST_ID, game_id: GAME_ID,
     room_generation: j.generation ?? 0, version: placed.length,
     previous_state_hash: last ? String(last.seq) : null,
     word: next, request_id: `w-${placed.length}-${Date.now().toString(36)}`,
